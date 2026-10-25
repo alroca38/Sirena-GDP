@@ -1,0 +1,18 @@
+# PYTHON
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+env/
+
+# ENTORNO LOCAL
+.env
+.env.local
+.env.*.local
+.env.example
+
+# DOCKER
+data/
+postgres_data/
