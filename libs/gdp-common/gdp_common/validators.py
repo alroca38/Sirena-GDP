@@ -27,7 +27,7 @@ _KNOWN_RULES = {
 
 # Carga de especificaciones de validación desde el archivo JSON
 
-@dataclasss(frozen=True)
+@dataclass(frozen=True)
 class _Spec:
     raw: dict[str, Any]
     patterns: dict[str, re.Pattern[str]]
