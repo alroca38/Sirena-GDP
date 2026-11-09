@@ -44,8 +44,8 @@ def _findRoute(route: str | os.PathLike[str] | None) -> Path:
     elif os.environ.get(ENV_SPEC):
         candidates.append(Path(os.environ[ENV_SPEC]))
     else:
-        candidates.append(Path("/app/shared/validation_spec.json"))
-        candidates.append(Path(__file__).resolve().parents[3] / "shared" / "validation_spec.json")
+        candidates.append(Path("/app/shared/validation-spec.json"))
+        candidates.append(Path(__file__).resolve().parents[3] / "shared" / "validation-spec.json")
     for c in candidates:
         if c.is_file():
             return c
@@ -58,13 +58,13 @@ def loadSpec(route: str | None = None) -> _Spec:
     patterns = {n: re.compile(p) for n, p in raw["patterns"].items()}
     months = {m: i + 1 for i, m in enumerate(raw["abrvMonths"])}
 
-    for name, field in raw["fields"].items():
-        for rule in field["rules"]:
+    for name, fieldSpec in raw["fields"].items():
+        for rule in fieldSpec["rules"]:
             if rule["id"] not in _KNOWN_RULES:
                 raise ValueError(f"Unknown validation rule '{rule['id']}' for field '{name}'")
             if rule["id"] == "pattern" and rule["pattern"] not in patterns:
                 raise ValueError(f"Unknown pattern '{rule['pattern']}' for field '{name}'")
-        for f in field.get("inputFormats", []):
+        for f in fieldSpec.get("inputFormats", []):
             if f["pattern"] not in patterns:
                 raise ValueError(f"Unknown pattern '{f['pattern']}' for input format of field '{name}'")
     return _Spec(raw=raw, patterns=patterns, months=months)
@@ -122,7 +122,7 @@ def _evaluateField(spec: _Spec, name: str, value: Any, today: date) -> tuple[Any
     Devuelve el valor normalizado y un mensaje de error (o None si es válido).
     """
     field = spec.fields[name]
-    text = _normalize(_toText(value), field.get("normalization", []))
+    text = _normalize(_toText(value), field.get("normalize", []))
 
     if text == "":
         for rule in field["rules"]:
@@ -130,7 +130,7 @@ def _evaluateField(spec: _Spec, name: str, value: Any, today: date) -> tuple[Any
                 return None, _message(rule, field)
         return None, None
 
-    date: date | None = None
+    parsedDate: date | None = None
     dateStatus = ""
     for rule in field["rules"]:
         rid = rule["id"]
@@ -148,7 +148,7 @@ def _evaluateField(spec: _Spec, name: str, value: Any, today: date) -> tuple[Any
             fail = text not in {v["code"] for v in field["values"]}
         elif rid in ("dateFormat", "realDate", "noFutureDate", "minDate"):
             if not dateStatus:
-                dateStatus, date = _parseDate(spec, field, text)
+                dateStatus, parsedDate = _parseDate(spec, field, text)
             if rid == "dateFormat":
                 fail = dateStatus == "format"
             elif rid == "realDate":
@@ -156,14 +156,14 @@ def _evaluateField(spec: _Spec, name: str, value: Any, today: date) -> tuple[Any
             elif dateStatus != "ok":
                 fail = True
             elif rid == "noFutureDate":
-                fail = date > today
+                fail = parsedDate > today
             else:
-                fail = date < date.fromisoformat(rule["value"])
+                fail = parsedDate < parsedDate.fromisoformat(rule["value"])
 
         if fail:
             return text, _message(rule, field)
 
-    return (date if field["type"] == "date" else text), None
+    return (parsedDate if field["type"] == "date" else text), None
 
 def _todayBogota() -> date:
     return datetime.now(_BOGOTA_TZ).date()
@@ -188,7 +188,7 @@ def validatePerson(data: Mapping[str, Any], today: date | None = None, specRoute
     normalized_data: dict[str, Any] = {}
     errors: dict[str, str] = {}
 
-    for name in spec.fields.items():
+    for name, field in spec.fields.items():
         if field["type"] == "file":
             continue  # Skip file fields for now
         value, error = _evaluateField(spec, name, data.get(name), today)
@@ -219,7 +219,7 @@ def detectPhotoType(content: bytes, *, specRoute: str | None = None) -> str | No
     Detecta el tipo de archivo de una foto a partir de su contenido.
     """
     for type in loadSpec(specRoute).fields["photo"]["typesAllowed"]:
-        for signature in type["signature"]:
+        for signature in type["hexSignature"]:
             if content.startswith(bytes.fromhex(signature)):
                 return type["mime"]
     return None
@@ -232,12 +232,12 @@ def validatePhoto(content: bytes | None, *, specRoute: str | None = None) -> Pho
     if content is None:
         return None
     spec = loadSpec(specRoute)
-    field = spec.fields["photo"]
+    fieldSpec = spec.fields["photo"]
     http = spec.raw["httpErrors"]
 
-    for rule in field["rules"]:
+    for rule in fieldSpec["rules"]:
         if rule["id"] == "maxSize" and len(content) > rule["value"]:
-            return PhotoError(http["oversizedPhoto"], _message(rule, field))
+            return PhotoError(http["oversizedPhoto"], _message(rule, fieldSpec))
         if rule["id"] == "realFileType" and detectPhotoType(content, specRoute=specRoute) is None:
-            return PhotoError(http["invalidPhoto"], _message(rule, field))
+            return PhotoError(http["invalidPhoto"], _message(rule, fieldSpec))
     return None

@@ -36,7 +36,7 @@ def _validateOrLaunch(data: Mapping[str, Any]) -> dict[str, Any]:
 # INPUT
 
 class _PersonData(BaseModel):
-    modelConfig = ConfigDict(coerce_numbers_to_str=True, extra="ignore")
+    model_config = ConfigDict(coerce_numbers_to_str=True, extra="ignore")
     documentType: str | None = Field(
         None, description="Código del tipo de documento: TI (Tarjeta de identidad) o CC (Cédula).",
         examples=["CC"]
@@ -76,7 +76,7 @@ class CreatePerson(_PersonData):
         examples=["1045678901"]
     )
 
-    def validate(self) -> dict[str, Any]:
+    def validateData(self) -> dict[str, Any]:
         return _validateOrLaunch(self.model_dump())
 
 class ModifyPerson(_PersonData):
@@ -84,14 +84,14 @@ class ModifyPerson(_PersonData):
         False, description="Si es 'true' y no se envía una foto nueva, elimina la foto actual."
     )
 
-    def validate(self, documentId: str) -> dict[str, Any]:
+    def validateData(self, documentId: str) -> dict[str, Any]:
         data = self.model_dump(exclude={"removePhoto"})
         data["documentId"] = documentId
         return _validateOrLaunch(data)
 
     def photoAction(self, aNewPhoto: bool) -> PhotoAction:
         if aNewPhoto and self.removePhoto:
-            raise ValidationError({"foto": "Envíe una foto nueva o pida quitarla, pero no ambas cosas."})
+            raise ValidationError({"photo": "Envíe una foto nueva o pida quitarla, pero no ambas cosas."})
         if aNewPhoto:
             return "replace"
         return "remove" if self.removePhoto else "conserve"
@@ -99,7 +99,7 @@ class ModifyPerson(_PersonData):
 # OUTPUT
 
 class PersonResponse(BaseModel):
-    modelConfig = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
 
     documentType: str
     documentId: str

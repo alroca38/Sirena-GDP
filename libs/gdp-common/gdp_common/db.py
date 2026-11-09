@@ -48,7 +48,7 @@ def isUniquenessViolation(exc: BaseException) -> bool:
     return getattr(exc.orig, "sqlstate", None) == _SQLSTATE_UNICIDAD
 
 def restartEngine() -> None:
-    if getEngine().cache_info().currsize:
+    if getEngine.cache_info().currsize:
         getEngine().dispose()
     getSessionFactory.cache_clear()
-    getEngine().cache_clear()
+    getEngine.cache_clear()
