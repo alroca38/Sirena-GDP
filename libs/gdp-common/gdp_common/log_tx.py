@@ -41,10 +41,10 @@ _MAX_TEXT = 10_000
 _INSERT = text(
     """
     INSERT INTO log_transaction
-        (timestamp, type, result, document_type, document_number,
+        (timestamp, type, result, documentType, documentId,
          user, question, answer)
     VALUES
-        (clock_timestamp(), :type, :result, :document_type, :document_number,
+        (clock_timestamp(), :type, :result, :documentType, :documentId,
          :user, :question, :answer)
     RETURNING id
     """
@@ -63,7 +63,7 @@ def registerLog(
     result: TransactionResult | str,
     *,
     documentType: str | None = None,
-    documentNumber: str | None = None,
+    documentId: str | None = None,
     user: str | None = None,
     question: str | None = None,
     answer: str | None = None
@@ -73,8 +73,8 @@ def registerLog(
         {
             "type": TransactionType(type).value,
             "result": TransactionResult(result).value,
-            "document_type": _clean(documentType, _MAX_DOCUMENT),
-            "document_number": _clean(documentNumber, _MAX_DOCUMENT),
+            "documentType": _clean(documentType, _MAX_DOCUMENT),
+            "documentId": _clean(documentId, _MAX_DOCUMENT),
             "user": _clean(user, _MAX_USER),
             "question": _clean(question, _MAX_TEXT),
             "answer": _clean(answer, _MAX_TEXT)
@@ -102,14 +102,14 @@ class Operation:
     type: TransactionType
     user: str | None = None
     documentType: str | None = None
-    documentNumber: str | None = None
+    documentId: str | None = None
     question: str | None = None
     answer: str | None = None
 
     def _fields(self) -> dict[str, Any]:
         return {
             "documentType": self.documentType,
-            "documentNumber": self.documentNumber,
+            "documentId": self.documentId,
             "user": self.user,
             "question": self.question,
             "answer": self.answer
@@ -127,7 +127,7 @@ def auditedOperation(
     *,
     user: str | None = None,
     documentType: str | None = None,
-    documentNumber: str | None = None,
+    documentId: str | None = None,
     question: str | None = None,
     answer: str | None = None
 ) -> Iterator[Operation]:
@@ -138,7 +138,7 @@ def auditedOperation(
         type=type,
         user=user,
         documentType=documentType,
-        documentNumber=documentNumber,
+        documentId=documentId,
         question=question,
         answer=answer
     )
