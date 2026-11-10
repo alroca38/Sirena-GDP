@@ -31,7 +31,7 @@ class TransactionType(str, Enum):
 
 class TransactionResult(str, Enum):
     SUCCESS = "EXITO"
-    REJECTED = "RECHAZADO"
+    REJECTED = "RECHAZADA"
     ERROR = "ERROR"
 
 _MAX_DOCUMENT = 64
@@ -42,7 +42,7 @@ _INSERT = text(
     """
     INSERT INTO log_transaction
         (timestamp, type, result, documentType, documentId,
-         user, question, answer)
+         "user", question, answer)
     VALUES
         (clock_timestamp(), :type, :result, :documentType, :documentId,
          :user, :question, :answer)
@@ -50,12 +50,12 @@ _INSERT = text(
     """
 )
 
-def _clean(value: Any, max: int) -> str | None:
+def _clean(value: Any, maxLength: int) -> str | None:
     if value is None:
         return None
-    text = str(value).replace("\x00", "")
-    text = text.encode("utf-8", "replace").decode("utf-8")
-    return text[:max]
+    printedText = str(value).replace("\x00", "")
+    printedText = printedText.encode("utf-8", "replace").decode("utf-8")
+    return printedText[:maxLength]
 
 def registerLog(
     session: Session,
@@ -125,7 +125,7 @@ def _revert(session: Session) -> None:
 def auditedOperation(
     type: TransactionType | str,
     *,
-    user: str | None = None,
+    user: str | None,
     documentType: str | None = None,
     documentId: str | None = None,
     question: str | None = None,

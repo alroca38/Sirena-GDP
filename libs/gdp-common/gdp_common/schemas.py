@@ -2,7 +2,7 @@
 from __future__ import annotations
  
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
  
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +12,8 @@ from gdp_common.validators import validatePerson
 
 __all__ = [
     "FIELDS_PERSON", "COLUMNS_PERSON",
-    "CreatePerson", "ModifyPerson", "PersonResponse", "PhotoAction"
+    "CreatePerson", "ModifyPerson", "PersonResponse", "PhotoAction",
+    "TransactionLogItem", "TransactionLogPage"
 ]
 
 FIELDS_PERSON = (
@@ -25,6 +26,15 @@ COLUMNS_PERSON = (
     "birthdate, genre, email, phoneNumber, (photo IS NOT NULL) AS hasPhoto"
 )
 
+_PERSON_ROW_MAP = {k.lower(): k for k in (*FIELDS_PERSON, "hasPhoto")}
+_LOG_ROW_MAP = {
+    k.lower(): k
+    for k in (
+        "id", "timestamp", "type", "result",
+        "documentType", "documentId", "user", "question", "answer"
+    )
+}
+
 PhotoAction = Literal["conserve", "replace", "remove"]
 
 def _validateOrLaunch(data: Mapping[str, Any]) -> dict[str, Any]:
@@ -36,7 +46,7 @@ def _validateOrLaunch(data: Mapping[str, Any]) -> dict[str, Any]:
 # INPUT
 
 class _PersonData(BaseModel):
-    modelConfig = ConfigDict(coerce_numbers_to_str=True, extra="ignore")
+    model_config = ConfigDict(coerce_numbers_to_str=True, extra="ignore")
     documentType: str | None = Field(
         None, description="Código del tipo de documento: TI (Tarjeta de identidad) o CC (Cédula).",
         examples=["CC"]
@@ -76,7 +86,7 @@ class CreatePerson(_PersonData):
         examples=["1045678901"]
     )
 
-    def validate(self) -> dict[str, Any]:
+    def validateData(self) -> dict[str, Any]:
         return _validateOrLaunch(self.model_dump())
 
 class ModifyPerson(_PersonData):
@@ -84,14 +94,14 @@ class ModifyPerson(_PersonData):
         False, description="Si es 'true' y no se envía una foto nueva, elimina la foto actual."
     )
 
-    def validate(self, documentId: str) -> dict[str, Any]:
+    def validateData(self, documentId: str) -> dict[str, Any]:
         data = self.model_dump(exclude={"removePhoto"})
         data["documentId"] = documentId
         return _validateOrLaunch(data)
 
     def photoAction(self, aNewPhoto: bool) -> PhotoAction:
         if aNewPhoto and self.removePhoto:
-            raise ValidationError({"foto": "Envíe una foto nueva o pida quitarla, pero no ambas cosas."})
+            raise ValidationError({"photo": "Envíe una foto nueva o pida quitarla, pero no ambas cosas."})
         if aNewPhoto:
             return "replace"
         return "remove" if self.removePhoto else "conserve"
@@ -99,7 +109,7 @@ class ModifyPerson(_PersonData):
 # OUTPUT
 
 class PersonResponse(BaseModel):
-    modelConfig = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True)
 
     documentType: str
     documentId: str
@@ -114,4 +124,37 @@ class PersonResponse(BaseModel):
 
     @classmethod
     def fromRow(cls, row: Mapping[str, Any]) -> PersonResponse:
-        return cls.model_validate(dict(row))
+        normalized = {
+            _PERSON_ROW_MAP.get(str(k).lower(), str(k)): (
+                v.strip() if str(k).lower() == "phonenumber" and isinstance(v, str) else v
+            )
+            for k, v in dict(row).items()
+        }
+        return cls.model_validate(normalized)
+
+class TransactionLogItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    timestamp: datetime
+    type: str
+    result: str
+    documentType: str | None = None
+    documentId: str | None = None
+    user: str | None = None
+    question: str | None = None
+    answer: str | None = None
+
+    @classmethod
+    def fromRow(cls, row: Mapping[str, Any]) -> TransactionLogItem:
+        normalized = {
+            _LOG_ROW_MAP.get(str(k).lower(), str(k)): v
+            for k, v in dict(row).items()
+        }
+        return cls.model_validate(normalized)
+
+class TransactionLogPage(BaseModel):
+    items: list[TransactionLogItem]
+    total: int
+    page: int
+    pageSize: int

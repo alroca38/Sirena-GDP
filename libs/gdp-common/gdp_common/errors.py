@@ -13,9 +13,9 @@ if TYPE_CHECKING:
 log = logging.getLogger("gdp.errors")
 
 __all__ = [
-    "GDPError", "InternalError", "ValidationError", "NotAuthenticated",
+    "ErrorGDP", "InternalError", "ValidationError", "NotAuthenticated",
     "PersonNotFound", "DuplicatedDocument", "PhotoOversized",
-    "PhotoFormatNotAllowed", "PhotoError", "RegisterHandlers"
+    "PhotoFormatNotAllowed", "errorFromPhoto", "registerHandlers"
 ]
 
 # ---------------------
@@ -37,8 +37,8 @@ class ErrorGDP(Exception):
             headers: Mapping[str, str] | None = None,
     ) -> None:
         self.details = details if details is not None else self.defaultDetails
-        self.errors = dict[str, str] = dict(errors or {})
-        self.headers = dict[str,str] = dict(headers or {})
+        self.errors: dict[str, str] = dict(errors or {})
+        self.headers: dict[str,str] = dict(headers or {})
         self.registered = False
         super().__init__(self.details)
 
@@ -112,7 +112,7 @@ class PhotoFormatNotAllowed(ErrorGDP):
     def __init__(self, message: str) -> None:
         super().__init__(message, errors={"photo": message})
 
-def ErrorFromPhoto(error: PhotoError) -> ErrorGDP:
+def errorFromPhoto(error: PhotoError) -> ErrorGDP:
     if error.status == PhotoOversized.status:
         return PhotoOversized(error.message)
     if error.status == PhotoFormatNotAllowed.status:
@@ -188,7 +188,7 @@ def registerHandlers(
         body = {
             "status": exc.status_code,
             "title": _HTTP_TITLES.get(exc.status_code, "Error"),
-            "detail": _HTTP_TITLES.get(exc.status_code, "Error")
+            "details": _HTTP_TITLES.get(exc.status_code, "Error")
         }
         return JSONResponse(body, status_code=exc.status_code, headers=getattr(exc, "headers", None))
 
