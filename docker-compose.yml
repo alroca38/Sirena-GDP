@@ -1,0 +1,114 @@
+name: sirena
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-sirena}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-sirena}"]
+      interval: 10s
+      retries: 5
+
+  ms-create:
+    build:
+      context: .
+      dockerfile: ./services/ms-create/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-modify:
+    build:
+      context: .
+      dockerfile: ./services/ms-modify/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-delete:
+    build:
+      context: .
+      dockerfile: ./services/ms-delete/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-log:
+    build:
+      context: .
+      dockerfile: ./services/ms-log/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-consult:
+    build:
+      context: .
+      dockerfile: ./services/ms-consult/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+    profiles: ["consult"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports: ["80:80"]
+    depends_on:
+      - ms-create
+      - ms-modify
+      - ms-delete
+      - ms-log
+
+  n8n:
+    image: n8nio/n8n:1.68.0
+    env_file:
+      - path: .env
+        required: false
+    ports: ["5678:5678"]
+    volumes:
+      - n8ndata:/home/node/.n8n
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata: {}
+  n8ndata: {}
+

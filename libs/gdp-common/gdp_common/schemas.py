@@ -2,7 +2,7 @@
 from __future__ import annotations
  
 from collections.abc import Mapping
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
  
 from pydantic import BaseModel, ConfigDict, Field
@@ -12,7 +12,8 @@ from gdp_common.validators import validatePerson
 
 __all__ = [
     "FIELDS_PERSON", "COLUMNS_PERSON",
-    "CreatePerson", "ModifyPerson", "PersonResponse", "PhotoAction"
+    "CreatePerson", "ModifyPerson", "PersonResponse", "PhotoAction",
+    "TransactionLogItem", "TransactionLogPage"
 ]
 
 FIELDS_PERSON = (
@@ -24,6 +25,15 @@ COLUMNS_PERSON = (
     "documentType, documentId, firstName, secondName, lastNames, "
     "birthdate, genre, email, phoneNumber, (photo IS NOT NULL) AS hasPhoto"
 )
+
+_PERSON_ROW_MAP = {k.lower(): k for k in (*FIELDS_PERSON, "hasPhoto")}
+_LOG_ROW_MAP = {
+    k.lower(): k
+    for k in (
+        "id", "timestamp", "type", "result",
+        "documentType", "documentId", "user", "question", "answer"
+    )
+}
 
 PhotoAction = Literal["conserve", "replace", "remove"]
 
@@ -114,4 +124,37 @@ class PersonResponse(BaseModel):
 
     @classmethod
     def fromRow(cls, row: Mapping[str, Any]) -> PersonResponse:
-        return cls.model_validate(dict(row))
+        normalized = {
+            _PERSON_ROW_MAP.get(str(k).lower(), str(k)): (
+                v.strip() if str(k).lower() == "phonenumber" and isinstance(v, str) else v
+            )
+            for k, v in dict(row).items()
+        }
+        return cls.model_validate(normalized)
+
+class TransactionLogItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    timestamp: datetime
+    type: str
+    result: str
+    documentType: str | None = None
+    documentId: str | None = None
+    user: str | None = None
+    question: str | None = None
+    answer: str | None = None
+
+    @classmethod
+    def fromRow(cls, row: Mapping[str, Any]) -> TransactionLogItem:
+        normalized = {
+            _LOG_ROW_MAP.get(str(k).lower(), str(k)): v
+            for k, v in dict(row).items()
+        }
+        return cls.model_validate(normalized)
+
+class TransactionLogPage(BaseModel):
+    items: list[TransactionLogItem]
+    total: int
+    page: int
+    pageSize: int

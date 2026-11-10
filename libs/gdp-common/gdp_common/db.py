@@ -24,6 +24,13 @@ def _normalizeUrl(url: str) -> str:
 @lru_cache(maxsize=1)
 def getEngine() -> Engine:
     url = os.environ.get(ENV_DB_URL)
+    if not url and any(k in os.environ for k in ("POSTGRES_USER", "POSTGRES_DB", "POSTGRES_HOST")):
+        user = os.environ.get("POSTGRES_USER", "postgres")
+        password = os.environ.get("POSTGRES_PASSWORD", "postgres")
+        host = os.environ.get("POSTGRES_HOST", "postgres")
+        port = os.environ.get("POSTGRES_PORT", "5432")
+        db = os.environ.get("POSTGRES_DB", "sirena")
+        url = f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
     if not url:
         raise RuntimeError(f"Falta la variable de entorno {ENV_DB_URL}")
     return create_engine(

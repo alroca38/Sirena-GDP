@@ -220,7 +220,8 @@ def detectPhotoType(content: bytes, *, specRoute: str | None = None) -> str | No
     """
     for type in loadSpec(specRoute).fields["photo"]["typesAllowed"]:
         for signature in type["hexSignature"]:
-            if content.startswith(bytes.fromhex(signature)):
+            hexBytes = signature["bytes"] if isinstance(signature, Mapping) else signature
+            if content.startswith(bytes.fromhex(hexBytes)):
                 return type["mime"]
     return None
 

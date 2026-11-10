@@ -42,7 +42,7 @@ _INSERT = text(
     """
     INSERT INTO log_transaction
         (timestamp, type, result, documentType, documentId,
-         user, question, answer)
+         "user", question, answer)
     VALUES
         (clock_timestamp(), :type, :result, :documentType, :documentId,
          :user, :question, :answer)
