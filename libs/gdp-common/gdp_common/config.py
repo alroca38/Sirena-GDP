@@ -20,15 +20,19 @@ def _firstEnv(*names: str, default: str | None = None) -> str | None:
 @dataclass(frozen=True)
 class Settings:
     dbUrl: str
-    jwksUrl: str | None = None
-    issuer: str | None = None
-    audience: str | None = None
-    publicKey: str | None = None
-    jwtSecret: str | None = None
-    robleVerifyUrl: str | None = None
-    algorithms: tuple[str, ...] = ("RS256", "HS256", "ES256")
+    robleBaseUrl: str = "https://roble-api.test-openlab.uninorte.edu.co"
+    robleContractId: str | None = None
+    authCacheTtlSeconds: float = 30.0
+    authTimeoutSeconds: float = 5.0
     n8nWebhookUrl: str = "http://n8n:5678/webhook/person-sync"
     n8nTimeoutSeconds: float = 3.0
+
+
+def _floatEnv(name: str, default: float) -> float:
+    try:
+        return float(_firstEnv(name, default=str(default)) or default)
+    except ValueError:
+        return default
 
 
 @lru_cache(maxsize=1)
@@ -42,46 +46,24 @@ def getSettings() -> Settings:
         pgDb = _firstEnv("POSTGRES_DB", default="sirena")
         dbUrl = f"postgresql+psycopg://{pgUser}:{pgPass}@{pgHost}:{pgPort}/{pgDb}"
 
-    jwksUrl = _firstEnv("ROBLE_JWKS_URL", "SSO_JWKS_URL", "JWKS_URL")
-    issuer = _firstEnv("ROBLE_ISSUER", "SSO_ISSUER", "JWT_ISSUER")
-    audience = _firstEnv("ROBLE_AUDIENCE", "SSO_AUDIENCE", "JWT_AUDIENCE")
-    publicKey = _firstEnv("ROBLE_PUBLIC_KEY", "SSO_PUBLIC_KEY", "JWT_PUBLIC_KEY")
-    jwtSecret = _firstEnv("ROBLE_JWT_SECRET", "SSO_JWT_SECRET", "JWT_SECRET")
-
-    robleVerifyUrl = _firstEnv("ROBLE_VERIFY_URL")
-    if not robleVerifyUrl:
-        authBase = _firstEnv("ROBLE_AUTH_URL")
-        contract = _firstEnv("ROBLE_CONTRACT", "ROBLE_DB_NAME", "ROBLE_PROJECT_ID")
-        if authBase and contract:
-            robleVerifyUrl = f"{authBase.rstrip('/')}/{contract.strip('/')}/verify-token"
-
-    rawAlgs = _firstEnv("ROBLE_ALGORITHMS", "JWT_ALGORITHMS")
-    algorithms = (
-        tuple(a.strip() for a in rawAlgs.split(",") if a.strip())
-        if rawAlgs
-        else ("RS256", "HS256", "ES256")
-    )
+    robleBaseUrl = (
+        _firstEnv("ROBLE_BASE_URL", default=Settings.robleBaseUrl) or Settings.robleBaseUrl
+    ).rstrip("/")
+    robleContractId = _firstEnv("ROBLE_CONTRACT_ID")
 
     n8nWebhookUrl = (
         _firstEnv("N8N_WEBHOOK_URL", default="http://n8n:5678/webhook/person-sync")
         or "http://n8n:5678/webhook/person-sync"
     )
-    try:
-        n8nTimeout = float(_firstEnv("N8N_TIMEOUT_SECONDS", default="3.0") or "3.0")
-    except ValueError:
-        n8nTimeout = 3.0
 
     return Settings(
         dbUrl=dbUrl,
-        jwksUrl=jwksUrl,
-        issuer=issuer,
-        audience=audience,
-        publicKey=publicKey,
-        jwtSecret=jwtSecret,
-        robleVerifyUrl=robleVerifyUrl,
-        algorithms=algorithms,
+        robleBaseUrl=robleBaseUrl,
+        robleContractId=robleContractId,
+        authCacheTtlSeconds=_floatEnv("AUTH_CACHE_TTL_SECONDS", 30.0),
+        authTimeoutSeconds=_floatEnv("ROBLE_TIMEOUT_SECONDS", 5.0),
         n8nWebhookUrl=n8nWebhookUrl,
-        n8nTimeoutSeconds=n8nTimeout,
+        n8nTimeoutSeconds=_floatEnv("N8N_TIMEOUT_SECONDS", 3.0),
     )
 
 

@@ -14,6 +14,7 @@ log = logging.getLogger("gdp.errors")
 
 __all__ = [
     "ErrorGDP", "InternalError", "ValidationError", "NotAuthenticated",
+    "AuthProviderUnavailable",
     "PersonNotFound", "DuplicatedDocument", "PhotoOversized",
     "PhotoFormatNotAllowed", "errorFromPhoto", "registerHandlers"
 ]
@@ -66,6 +67,11 @@ class NotAuthenticated(ErrorGDP):
 
     def __init__(self, details: str | None = None) -> None:
         super().__init__(details, headers={"WWW-Authenticate": "Bearer"})
+
+class AuthProviderUnavailable(ErrorGDP):
+    status = 503
+    title = "Proveedor de autenticación no disponible"
+    defaultDetails = "No fue posible comunicarse con Roble. Intente de nuevo en unos instantes."
 
 class ValidationError(ErrorGDP):
     status = 422
