@@ -29,6 +29,13 @@ server {
         return 503 '{"status":503,"title":"Servicio no disponible","details":"El servicio de consulta se encuentra deshabilitado."}';
     }
 
+    location /api/auth/ {
+        set $auth http://ms-auth:8000;
+        proxy_pass $auth;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
     location /api/create/ {
         set $create http://ms-create:8000;
         proxy_pass $create;
@@ -116,11 +123,32 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
     th, td { border-bottom: 1px solid var(--border); padding: 0.65rem 0.5rem; text-align: left; }
     th { color: var(--muted); text-transform: uppercase; font-size: 0.72rem; }
     .hidden { display: none !important; }
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 1.25rem; }
+    .login-card { width: 100%; max-width: 400px; }
+    .login-card .field { margin-bottom: 1rem; }
     .profile-box { display: grid; grid-template-columns: 180px 1fr; gap: 1.5rem; align-items: start; margin-top: 1rem; }
     .avatar-preview { width: 160px; height: 160px; border-radius: 0.75rem; border: 1px solid var(--border); background: var(--card); object-fit: cover; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.8rem; }
   </style>
 </head>
 <body>
+  <div id="loginView" class="login-wrap hidden">
+    <form id="loginForm" class="panel login-card" onsubmit="submitLogin(event)">
+      <h2 style="margin-bottom:0.25rem">Sirena · Iniciar sesión</h2>
+      <p style="color:var(--muted);font-size:0.85rem;margin-bottom:1.25rem">Use su cuenta de Roble.</p>
+      <div id="loginError" class="alert alert-err hidden"></div>
+      <div class="field">
+        <label for="loginEmail">Correo</label>
+        <input id="loginEmail" type="email" autocomplete="username" maxlength="254" required />
+      </div>
+      <div class="field">
+        <label for="loginPassword">Contraseña</label>
+        <input id="loginPassword" type="password" autocomplete="current-password" maxlength="256" required />
+      </div>
+      <button id="loginBtn" class="btn btn-primary" style="width:100%" type="submit">Ingresar</button>
+    </form>
+  </div>
+
+  <div id="appShell" class="hidden">
   <header>
     <div class="brand">
       <span class="brand-badge">GDP</span>
@@ -130,9 +158,9 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       </div>
     </div>
     <div class="user-bar">
-      <span id="userDisplay">ana.gomez</span>
-      <span class="badge badge-ok">SSO Activo</span>
-      <button class="btn btn-secondary" onclick="configureToken()">Token SSO</button>
+      <span id="userDisplay"></span>
+      <span class="badge badge-ok">SSO Roble</span>
+      <button class="btn btn-secondary" onclick="logout()">Cerrar sesión</button>
     </div>
   </header>
 
@@ -363,29 +391,105 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       </table>
     </section>
   </main>
+  </div>
 
   <script>
-    function makeDefaultJwt(username) {
-      const b64 = (obj) => btoa(JSON.stringify(obj)).replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
-      const header = b64({ alg: 'HS256', typ: 'JWT' });
-      const payload = b64({ sub: username, preferred_username: username, name: username, exp: Math.floor(Date.now() / 1000) + 86400 });
-      return `${header}.${payload}.sirena-demo-sig`;
+    // ---------- Autenticación con Roble (vía ms-auth) ----------
+    const K_ACCESS = 'gdp_access', K_REFRESH = 'gdp_refresh', K_USER = 'gdp_user';
+    // sessionStorage: la sesión muere al cerrar la pestaña.
+    function getToken() { return sessionStorage.getItem(K_ACCESS) || ''; }
+    function esc(v) {
+      return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
     }
 
-    if (!localStorage.getItem('gdp_token')) {
-      localStorage.setItem('gdp_token', makeDefaultJwt('ana.gomez'));
+    function showLogin(message) {
+      document.getElementById('appShell').classList.add('hidden');
+      document.getElementById('loginView').classList.remove('hidden');
+      const err = document.getElementById('loginError');
+      err.textContent = message || '';
+      err.classList.toggle('hidden', !message);
+      document.getElementById('loginPassword').value = '';
     }
 
-    function getToken() { return localStorage.getItem('gdp_token') || ''; }
-    function authHeaders() { return { 'Authorization': 'Bearer ' + getToken() }; }
+    function showApp() {
+      document.getElementById('loginView').classList.add('hidden');
+      document.getElementById('appShell').classList.remove('hidden');
+      document.getElementById('userDisplay').textContent = sessionStorage.getItem(K_USER) || '';
+      openView('menu');
+    }
 
-    function configureToken() {
-      const current = getToken();
-      const input = prompt('Ingrese el token JWT de Roble (o deje vacío para regenerar token de prueba):', current);
-      if (input === null) return;
-      const next = input.trim() || makeDefaultJwt('ana.gomez');
-      localStorage.setItem('gdp_token', next);
-      showAlert('Token actualizado correctamente.', false);
+    function clearSession() {
+      [K_ACCESS, K_REFRESH, K_USER].forEach(k => sessionStorage.removeItem(k));
+    }
+
+    async function submitLogin(e) {
+      e.preventDefault();
+      const btn = document.getElementById('loginBtn');
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/auth/v1/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: document.getElementById('loginEmail').value.trim(),
+            password: document.getElementById('loginPassword').value
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) { showLogin(data.details || data.title || 'No se pudo iniciar sesión.'); return; }
+        sessionStorage.setItem(K_ACCESS, data.accessToken);
+        if (data.refreshToken) sessionStorage.setItem(K_REFRESH, data.refreshToken);
+        sessionStorage.setItem(K_USER, data.user.name || data.user.email || '');
+        showApp();
+      } catch (_) {
+        showLogin('No se pudo conectar con el servidor.');
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function logout() {
+      const token = getToken();
+      clearSession();
+      if (token) {
+        fetch('/api/auth/v1/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } }).catch(() => {});
+      }
+      showLogin('');
+    }
+
+    let refreshing = null;
+    function refreshAccessToken() {
+      if (refreshing) return refreshing;
+      const refreshToken = sessionStorage.getItem(K_REFRESH);
+      if (!refreshToken) return Promise.resolve(false);
+      refreshing = fetch('/api/auth/v1/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      }).then(async res => {
+        if (!res.ok) return false;
+        const data = await res.json();
+        sessionStorage.setItem(K_ACCESS, data.accessToken);
+        if (data.refreshToken) sessionStorage.setItem(K_REFRESH, data.refreshToken);
+        return true;
+      }).catch(() => false).finally(() => { refreshing = null; });
+      return refreshing;
+    }
+
+    // fetch autenticado: agrega el Bearer y, ante un 401, renueva el token y reintenta una vez.
+    async function api(url, options = {}) {
+      const send = () => fetch(url, { ...options, headers: { ...(options.headers || {}), 'Authorization': 'Bearer ' + getToken() } });
+      let res = await send();
+      if (res.status === 401) {
+        if (await refreshAccessToken()) {
+          res = await send();
+        }
+        if (res.status === 401) {
+          clearSession();
+          showLogin('Su sesión expiró. Inicie sesión de nuevo.');
+        }
+      }
+      return res;
     }
 
     function showAlert(msg, isError = false) {
@@ -459,7 +563,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       clearAlert();
       clearFieldErrors();
       const doc = document.getElementById('modifySearchDoc').value.trim();
-      const res = await fetch(`/api/modify/v1/person/${encodeURIComponent(doc)}`, { headers: authHeaders() });
+      const res = await api(`/api/modify/v1/person/${encodeURIComponent(doc)}`);
       const data = await res.json();
       if (!res.ok) {
         showAlert(data.details || data.title || 'No se pudo cargar la persona.', true);
@@ -502,7 +606,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
         fd.append('removePhoto', document.getElementById('f_removePhoto').checked ? 'true' : 'false');
       }
 
-      const res = await fetch(url, { method, headers: authHeaders(), body: fd });
+      const res = await api(url, { method, body: fd });
       const data = await res.json();
       if (!res.ok) {
         if (data.errors) {
@@ -521,7 +625,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
     async function runConsult() {
       clearAlert();
       const doc = document.getElementById('consultDocInput').value.trim();
-      const res = await fetch(`/api/consult/v1/person/${encodeURIComponent(doc)}`, { headers: authHeaders() });
+      const res = await api(`/api/consult/v1/person/${encodeURIComponent(doc)}`);
       const data = await res.json();
       if (!res.ok) {
         document.getElementById('consultResult').classList.add('hidden');
@@ -530,21 +634,26 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       }
       const details = document.getElementById('consultDetails');
       details.innerHTML = `
-        <div><label>Tipo de Documento</label><div>${data.documentType}</div></div>
-        <div><label>Nro. Documento</label><div>${data.documentId}</div></div>
-        <div><label>Primer Nombre</label><div>${data.firstName}</div></div>
-        <div><label>Segundo Nombre</label><div>${data.secondName || '-'}</div></div>
-        <div><label>Apellidos</label><div>${data.lastNames}</div></div>
-        <div><label>Fecha de Nacimiento</label><div>${data.birthdate}</div></div>
-        <div><label>Género</label><div>${data.genre}</div></div>
-        <div><label>Celular</label><div>${data.phoneNumber}</div></div>
-        <div class="full"><label>Correo Electrónico</label><div>${data.email}</div></div>
+        <div><label>Tipo de Documento</label><div>${esc(data.documentType)}</div></div>
+        <div><label>Nro. Documento</label><div>${esc(data.documentId)}</div></div>
+        <div><label>Primer Nombre</label><div>${esc(data.firstName)}</div></div>
+        <div><label>Segundo Nombre</label><div>${esc(data.secondName || '-')}</div></div>
+        <div><label>Apellidos</label><div>${esc(data.lastNames)}</div></div>
+        <div><label>Fecha de Nacimiento</label><div>${esc(data.birthdate)}</div></div>
+        <div><label>Género</label><div>${esc(data.genre)}</div></div>
+        <div><label>Celular</label><div>${esc(data.phoneNumber)}</div></div>
+        <div class="full"><label>Correo Electrónico</label><div>${esc(data.email)}</div></div>
       `;
       const img = document.getElementById('consultAvatar');
+      if (img.dataset.blobUrl) { URL.revokeObjectURL(img.dataset.blobUrl); delete img.dataset.blobUrl; }
+      img.removeAttribute('src');
       if (data.hasPhoto) {
-        img.src = `/api/consult/v1/person/${encodeURIComponent(data.documentId)}/pic?token=${encodeURIComponent(getToken())}&t=${Date.now()}`;
-      } else {
-        img.removeAttribute('src');
+        const picRes = await api(`/api/consult/v1/person/${encodeURIComponent(data.documentId)}/pic`);
+        if (picRes.ok) {
+          const blobUrl = URL.createObjectURL(await picRes.blob());
+          img.dataset.blobUrl = blobUrl;
+          img.src = blobUrl;
+        }
       }
       document.getElementById('consultResult').classList.remove('hidden');
     }
@@ -552,7 +661,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
     async function preloadForDelete() {
       clearAlert();
       const doc = document.getElementById('deleteDocInput').value.trim();
-      const res = await fetch(`/api/delete/v1/person/${encodeURIComponent(doc)}`, { headers: authHeaders() });
+      const res = await api(`/api/delete/v1/person/${encodeURIComponent(doc)}`);
       const data = await res.json();
       if (!res.ok) {
         document.getElementById('deleteConfirmBox').classList.add('hidden');
@@ -561,7 +670,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       }
       deleteTargetDoc = data.documentId;
       document.getElementById('deleteSummaryText').textContent =
-        `¿Confirma que desea eliminar permanentemente a ${data.firstName} ${data.secondName || ''} ${data.lastNames} (${data.documentType} ${data.documentId})?`;
+        `¿Confirma que desea eliminar permanentemente a ${esc(data.firstName)} ${data.secondName || ''} ${esc(data.lastNames)} (${esc(data.documentType)} ${esc(data.documentId)})?`;
       document.getElementById('deleteConfirmBox').classList.remove('hidden');
     }
 
@@ -572,10 +681,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
 
     async function confirmDelete() {
       if (!deleteTargetDoc) return;
-      const res = await fetch(`/api/delete/v1/person/${encodeURIComponent(deleteTargetDoc)}`, {
-        method: 'DELETE',
-        headers: authHeaders()
-      });
+      const res = await api(`/api/delete/v1/person/${encodeURIComponent(deleteTargetDoc)}`, { method: 'DELETE' });
       if (res.status === 204) {
         showAlert('Persona eliminada correctamente.', false);
         cancelDelete();
@@ -592,7 +698,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
         const val = document.getElementById('log_' + k).value.trim();
         if (val) params.set(k, val);
       });
-      const res = await fetch('/api/log/v1/transactions?' + params.toString(), { headers: authHeaders() });
+      const res = await api('/api/log/v1/transactions?' + params.toString());
       const data = await res.json();
       if (!res.ok) {
         showAlert(data.details || data.title || 'Error al consultar el log.', true);
@@ -601,17 +707,17 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       const tbody = document.getElementById('logTableBody');
       tbody.innerHTML = (data.items || []).map(row => `
         <tr>
-          <td>#${row.id}<br/><span style="color:var(--muted)">${new Date(row.timestamp).toISOString().replace('T',' ').slice(0,19)}</span></td>
-          <td>${row.type}</td>
-          <td>${row.user || '-'}</td>
-          <td>${row.documentType ? row.documentType + ' - ' : ''}${row.documentId || 'N/A'}</td>
-          <td><span class="badge ${row.result === 'EXITO' ? 'badge-ok' : 'badge-err'}">${row.result}</span></td>
-          <td>${row.question ? `<b>P:</b> ${row.question}<br/><b>R:</b> ${row.answer || ''}` : '-'}</td>
+          <td>#${esc(row.id)}<br/><span style="color:var(--muted)">${new Date(row.timestamp).toISOString().replace('T',' ').slice(0,19)}</span></td>
+          <td>${esc(row.type)}</td>
+          <td>${esc(row.user || '-')}</td>
+          <td>${esc(row.documentType ? row.documentType + ' - ' : '')}${esc(row.documentId || 'N/A')}</td>
+          <td><span class="badge ${row.result === 'EXITO' ? 'badge-ok' : 'badge-err'}">${esc(row.result)}</span></td>
+          <td>${row.question ? `<b>P:</b> ${esc(row.question)}<br/><b>R:</b> ${esc(row.answer || '')}` : '-'}</td>
         </tr>
       `).join('');
     }
 
-    checkConsultHealth();
+    if (getToken()) { showApp(); } else { showLogin(''); }
   </script>
 </body>
 </html>

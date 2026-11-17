@@ -7,16 +7,27 @@ services:
       - path: .env
         required: false
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-sirena}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-sirena}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
       retries: 5
+
+  ms-auth:
+    build:
+      context: .
+      dockerfile: ./services/ms-auth/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
 
   ms-create:
     build:
@@ -26,8 +37,10 @@ services:
       - path: .env
         required: false
     environment:
-      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -40,8 +53,10 @@ services:
       - path: .env
         required: false
     environment:
-      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,8 +69,10 @@ services:
       - path: .env
         required: false
     environment:
-      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
-      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL:-http://n8n:5678/webhook/person-sync}
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
     depends_on:
       postgres:
         condition: service_healthy
@@ -68,7 +85,9 @@ services:
       - path: .env
         required: false
     environment:
-      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
     depends_on:
       postgres:
         condition: service_healthy
@@ -81,7 +100,9 @@ services:
       - path: .env
         required: false
     environment:
-      DB_URL: ${DB_URL:-postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-sirena}}
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
     profiles: ["consult"]
     depends_on:
       postgres:
@@ -91,6 +112,7 @@ services:
     build: ./frontend
     ports: ["80:80"]
     depends_on:
+      - ms-auth
       - ms-create
       - ms-modify
       - ms-delete
