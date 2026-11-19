@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Sirena person-sync webhook",
+  "description": "Evento emitido por ms-create, ms-modify y ms-delete después de confirmar la transacción principal.",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": ["action", "documentId", "documentType", "content", "metadata"],
+      "properties": {
+        "action": { "const": "upsert" },
+        "documentId": { "type": "string", "pattern": "^[0-9]{1,10}$" },
+        "documentType": { "enum": ["TI", "CC"] },
+        "firstName": { "type": "string" },
+        "secondName": { "type": ["string", "null"] },
+        "lastNames": { "type": "string" },
+        "birthdate": { "type": "string", "format": "date" },
+        "genre": { "enum": ["MASCULINO", "FEMENINO", "NO_BINARIO", "PREFIERO_NO_REPORTAR"] },
+        "content": { "type": "string", "minLength": 1 },
+        "metadata": {
+          "type": "object",
+          "required": ["documentId", "documentType"],
+          "properties": {
+            "documentId": { "type": "string" },
+            "numero_documento": { "type": "string" },
+            "documentType": { "enum": ["TI", "CC"] }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": ["action", "documentId", "metadata"],
+      "properties": {
+        "action": { "const": "delete" },
+        "documentId": { "type": "string", "pattern": "^[0-9]{1,10}$" },
+        "documentType": { "type": ["string", "null"], "enum": ["TI", "CC", null] },
+        "metadata": {
+          "type": "object",
+          "required": ["documentId", "numero_documento"],
+          "properties": {
+            "documentId": { "type": "string" },
+            "numero_documento": { "type": "string" }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
