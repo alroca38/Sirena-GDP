@@ -128,6 +128,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
     .login-card .field { margin-bottom: 1rem; }
     .profile-box { display: grid; grid-template-columns: 180px 1fr; gap: 1.5rem; align-items: start; margin-top: 1rem; }
     .avatar-preview { width: 160px; height: 160px; border-radius: 0.75rem; border: 1px solid var(--border); background: var(--card); object-fit: cover; display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 0.8rem; }
+    .help-text { color: var(--muted); font-size: 0.82rem; margin-top: 0.35rem; }
   </style>
 </head>
 <body>
@@ -198,7 +199,39 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
           <h3>6. Consultar Log</h3>
           <p>Auditoría de transacciones por tipo, documento y fecha.</p>
         </button>
+        <button id="btnAdminUsers" class="menu-card hidden" onclick="openView('users')">
+          <h3>7. Crear Usuarios</h3>
+          <p>Crear una cuenta de acceso en Roble. Disponible para administradores.</p>
+        </button>
       </div>
+    </section>
+
+    <section id="viewUsers" class="panel hidden">
+      <div class="panel-header">
+        <h2>Crear usuario</h2>
+        <button class="btn btn-secondary" onclick="openView('menu')">← Volver al Menú</button>
+      </div>
+      <p class="help-text" style="margin:0 0 1.25rem">La cuenta se crea en Roble con su rol predeterminado de usuario. El nuevo usuario podrá ingresar con el correo y la contraseña asignados.</p>
+      <form id="userForm" onsubmit="submitManagedUser(event)">
+        <div class="form-grid">
+          <div class="full">
+            <label for="userName">Nombre *</label>
+            <input id="userName" type="text" maxlength="120" autocomplete="name" required />
+          </div>
+          <div class="full">
+            <label for="userEmail">Correo *</label>
+            <input id="userEmail" type="email" maxlength="254" autocomplete="email" required />
+          </div>
+          <div class="full">
+            <label for="userPassword">Contraseña inicial *</label>
+            <input id="userPassword" type="password" minlength="8" maxlength="128" autocomplete="new-password" oninput="validateManagedPassword()" required />
+            <p id="userPasswordHelp" class="help-text">Mínimo 8 caracteres, una mayúscula, una minúscula, un número y un símbolo de ! @ # $ _ - .</p>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-primary" id="createUserBtn" type="submit">Crear cuenta en Roble</button>
+        </div>
+      </form>
     </section>
 
     <!-- VISTA FORMULARIO CREAR / MODIFICAR -->
@@ -395,7 +428,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
 
   <script>
     // ---------- Autenticación con Roble (vía ms-auth) ----------
-    const K_ACCESS = 'gdp_access', K_REFRESH = 'gdp_refresh', K_USER = 'gdp_user';
+    const K_ACCESS = 'gdp_access', K_REFRESH = 'gdp_refresh', K_USER = 'gdp_user', K_ROLE = 'gdp_role';
     // sessionStorage: la sesión muere al cerrar la pestaña.
     function getToken() { return sessionStorage.getItem(K_ACCESS) || ''; }
     function esc(v) {
@@ -411,15 +444,28 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       document.getElementById('loginPassword').value = '';
     }
 
-    function showApp() {
+    async function showApp(user = null) {
+      if (!user) {
+        try {
+          const res = await api('/api/auth/v1/me');
+          if (!res.ok) { showLogin('No se pudo validar la sesión. Inicie sesión de nuevo.'); return; }
+          user = await res.json();
+          sessionStorage.setItem(K_USER, user.name || user.email || '');
+          sessionStorage.setItem(K_ROLE, user.role || '');
+        } catch (_) {
+          showLogin('No se pudo validar la sesión con Roble.');
+          return;
+        }
+      }
       document.getElementById('loginView').classList.add('hidden');
       document.getElementById('appShell').classList.remove('hidden');
       document.getElementById('userDisplay').textContent = sessionStorage.getItem(K_USER) || '';
+      document.getElementById('btnAdminUsers').classList.toggle('hidden', String(user.role || '').toLowerCase() !== 'admin');
       openView('menu');
     }
 
     function clearSession() {
-      [K_ACCESS, K_REFRESH, K_USER].forEach(k => sessionStorage.removeItem(k));
+      [K_ACCESS, K_REFRESH, K_USER, K_ROLE].forEach(k => sessionStorage.removeItem(k));
     }
 
     async function submitLogin(e) {
@@ -440,7 +486,8 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
         sessionStorage.setItem(K_ACCESS, data.accessToken);
         if (data.refreshToken) sessionStorage.setItem(K_REFRESH, data.refreshToken);
         sessionStorage.setItem(K_USER, data.user.name || data.user.email || '');
-        showApp();
+        sessionStorage.setItem(K_ROLE, data.user.role || '');
+        showApp(data.user);
       } catch (_) {
         showLogin('No se pudo conectar con el servidor.');
       } finally {
@@ -533,7 +580,7 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
     function openView(view) {
       clearAlert();
       clearFieldErrors();
-      ['viewMenu', 'viewForm', 'viewConsult', 'viewDelete', 'viewLog'].forEach(id => {
+      ['viewMenu', 'viewForm', 'viewConsult', 'viewDelete', 'viewLog', 'viewUsers'].forEach(id => {
         document.getElementById(id).classList.add('hidden');
       });
       if (view === 'menu') {
@@ -556,7 +603,70 @@ RUN cat <<'EOF' > /usr/share/nginx/html/index.html
       } else if (view === 'log') {
         document.getElementById('viewLog').classList.remove('hidden');
         loadLogs();
+      } else if (view === 'users') {
+        if (String(sessionStorage.getItem(K_ROLE) || '').toLowerCase() !== 'admin') {
+          openView('menu');
+          showAlert('Solo un administrador de Roble puede crear usuarios.', true);
+          return;
+        }
+        document.getElementById('userForm').reset();
+        validateManagedPassword();
+        document.getElementById('viewUsers').classList.remove('hidden');
       }
+    }
+
+    async function submitManagedUser(e) {
+      e.preventDefault();
+      clearAlert();
+      if (!validateManagedPassword()) {
+        document.getElementById('userPassword').reportValidity();
+        return;
+      }
+      const btn = document.getElementById('createUserBtn');
+      btn.disabled = true;
+      try {
+        const res = await api('/api/auth/v1/users', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: document.getElementById('userName').value.trim(),
+            email: document.getElementById('userEmail').value.trim(),
+            password: document.getElementById('userPassword').value
+          })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showAlert(data.details || data.title || 'No se pudo crear la cuenta en Roble.', true);
+          return;
+        }
+        document.getElementById('userForm').reset();
+        validateManagedPassword();
+        showAlert(`Cuenta creada en Roble para ${data.email}.`, false);
+      } catch (_) {
+        showAlert('No se pudo conectar con el servicio de autenticación.', true);
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    function validateManagedPassword() {
+      const input = document.getElementById('userPassword');
+      const password = input.value;
+      const checks = [
+        password.length >= 8,
+        /[A-Z]/.test(password),
+        /[a-z]/.test(password),
+        /[0-9]/.test(password),
+        /[!@#$_.-]/.test(password)
+      ];
+      const valid = checks.every(Boolean);
+      input.setCustomValidity(valid ? '' : 'Debe incluir 8 caracteres, mayúscula, minúscula, número y un símbolo permitido.');
+      const help = document.getElementById('userPasswordHelp');
+      help.textContent = valid || !password
+        ? 'Mínimo 8 caracteres, una mayúscula, una minúscula, un número y un símbolo de ! @ # $ _ - .'
+        : 'La contraseña todavía no cumple todos los requisitos.';
+      help.style.color = valid || !password ? 'var(--muted)' : 'var(--danger)';
+      return valid;
     }
 
     async function preloadForModify() {

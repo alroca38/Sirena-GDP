@@ -7,10 +7,17 @@ from gdp_common import roble
 
 
 def publicUser(profile: dict[str, Any]) -> dict[str, Any]:
+    role = profile.get("role")
+    if isinstance(role, list):
+        role = next(
+            (item for item in role if isinstance(item, str) and item.strip().lower() == "admin"),
+            next((item for item in role if isinstance(item, str)), None),
+        )
     return {
         "userId": profile.get("userId"),
         "email": profile.get("email"),
         "name": profile.get("name"),
+        "role": role,
     }
 
 
@@ -35,3 +42,7 @@ def refresh(refreshToken: str) -> dict[str, Any]:
 
 def logout(accessToken: str) -> None:
     roble.logout(accessToken)
+
+
+def createUser(name: str, email: str, password: str) -> dict[str, str]:
+    return roble.registerUser(email=email, password=password, name=name)
