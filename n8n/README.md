@@ -12,6 +12,8 @@ Sirena utiliza n8n para mantener el índice vectorial de personas y ofrecer cons
 
 Compose publica n8n en el puerto `5678` y conserva sus datos en `n8ndata`. Configura una clave estable `N8N_ENCRYPTION_KEY` en `.env`; n8n la utiliza para cifrar las credenciales almacenadas. No la cambies mientras necesites acceder a las credenciales existentes.
 
+Compose ejecuta Ollama sin publicar su puerto al host y conserva modelos en `ollamadata`. El servicio descarga `qwen2.5:3b` para chat y `bge-m3` para embeddings antes de iniciar n8n. Ambos modelos son multilingües; `bge-m3` entrega vectores de 1024 dimensiones. El modelo de chat requiere aproximadamente 2 GB de memoria de almacenamiento; Ollama necesita memoria adicional al ejecutar los modelos.
+
 En las credenciales PostgreSQL de n8n usa host `postgres`, puerto `5432`, y la base/usuario/clave del entorno local. El usuario debe leer `person`, leer y escribir `vector_person`, e insertar en `log_transaction`.
 
 ## Flujos
