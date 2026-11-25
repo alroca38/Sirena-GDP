@@ -167,9 +167,9 @@
                 }
             ]
         },
-        "birthDate": {
+        "birthdate": {
             "tag": "Fecha de Nacimiento",
-            "type": "text",
+            "type": "date",
             "mandatory": true,
             "normalize": [
                 "trim",
@@ -303,7 +303,7 @@
                 {
                     "mime": "image/jpeg",
                     "extensions": [".jpg", ".jpeg"],
-                    "signature": [
+                    "hexSignature": [
                         {
                             "bytes": "FFD8FF"
                         }
@@ -312,7 +312,7 @@
                 {
                     "mime": "image/png",
                     "extensions": [".png"],
-                    "signature": [
+                    "hexSignature": [
                         {
                             "bytes": "89504E470D0A1A0A"
                         }
@@ -334,7 +334,7 @@
     },
     "httpErrors": {
         "validationError": 422,
-        "duplicatedDcocument": 409,
+        "duplicatedDocument": 409,
         "notFound": 404,
         "oversizedPhoto": 413,
         "invalidPhoto": 415,
@@ -421,7 +421,7 @@
                 "valid": false
             }
         ],
-        "birthDate": [
+        "birthdate": [
             {
                 "value": "05-mar-1998",
                 "valid": true

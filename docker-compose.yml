@@ -1,0 +1,180 @@
+name: sirena
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      retries: 5
+
+  ms-auth:
+    build:
+      context: .
+      dockerfile: ./services/ms-auth/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+
+  ms-create:
+    build:
+      context: .
+      dockerfile: ./services/ms-create/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-modify:
+    build:
+      context: .
+      dockerfile: ./services/ms-modify/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-delete:
+    build:
+      context: .
+      dockerfile: ./services/ms-delete/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+      N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-log:
+    build:
+      context: .
+      dockerfile: ./services/ms-log/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ms-consult:
+    build:
+      context: .
+      dockerfile: ./services/ms-consult/Dockerfile
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      DB_URL: ${DB_URL}
+      ROBLE_BASE_URL: ${ROBLE_BASE_URL}
+      ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
+    profiles: ["consult"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports: ["80:80"]
+    depends_on:
+      - ms-auth
+      - ms-create
+      - ms-modify
+      - ms-delete
+      - ms-log
+
+  ollama:
+    image: ollama/ollama:0.5.7
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  ollama-models:
+    image: ollama/ollama:0.5.7
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - ollama pull qwen2.5:3b && ollama pull bge-m3
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+
+  n8n:
+    image: n8nio/n8n:1.68.0
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /opt/sirena-n8n/entrypoint.sh > /tmp/entrypoint.sh && chmod +x /tmp/entrypoint.sh && exec /tmp/entrypoint.sh"]
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Define N8N_ENCRYPTION_KEY en .env}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      GENERIC_TIMEZONE: America/Bogota
+      TZ: America/Bogota
+      EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
+      EXECUTIONS_DATA_SAVE_ON_ERROR: none
+      EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
+      EXECUTIONS_DATA_PRUNE: "true"
+    ports: ["5678:5678"]
+    volumes:
+      - n8ndata:/home/node/.n8n
+      - ./n8n:/opt/sirena-n8n:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-models:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata: {}
+  n8ndata: {}
+  ollamadata: {}
+

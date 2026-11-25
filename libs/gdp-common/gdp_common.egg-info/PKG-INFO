@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: gdp-common
+Version: 0.1.0
+Summary: Módulo común de validación, base de datos, auditoría, autenticación y esquemas para Sirena GDP
+Requires-Python: >=3.11
+Requires-Dist: fastapi>=0.111.0
+Requires-Dist: uvicorn[standard]>=0.30.0
+Requires-Dist: sqlalchemy>=2.0.30
+Requires-Dist: psycopg[binary]>=3.1.18
+Requires-Dist: pydantic>=2.7.0
+Requires-Dist: PyJWT[crypto]>=2.8.0
+Requires-Dist: httpx>=0.27.0
+Requires-Dist: python-multipart>=0.0.9

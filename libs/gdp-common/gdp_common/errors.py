@@ -13,9 +13,10 @@ if TYPE_CHECKING:
 log = logging.getLogger("gdp.errors")
 
 __all__ = [
-    "GDPError", "InternalError", "ValidationError", "NotAuthenticated",
+    "ErrorGDP", "InternalError", "ValidationError", "NotAuthenticated",
+    "AuthProviderUnavailable", "AccessDenied", "DuplicatedUser", "UserRegistrationRejected",
     "PersonNotFound", "DuplicatedDocument", "PhotoOversized",
-    "PhotoFormatNotAllowed", "PhotoError", "RegisterHandlers"
+    "PhotoFormatNotAllowed", "errorFromPhoto", "registerHandlers"
 ]
 
 # ---------------------
@@ -37,8 +38,8 @@ class ErrorGDP(Exception):
             headers: Mapping[str, str] | None = None,
     ) -> None:
         self.details = details if details is not None else self.defaultDetails
-        self.errors = dict[str, str] = dict(errors or {})
-        self.headers = dict[str,str] = dict(headers or {})
+        self.errors: dict[str, str] = dict(errors or {})
+        self.headers: dict[str,str] = dict(headers or {})
         self.registered = False
         super().__init__(self.details)
 
@@ -66,6 +67,26 @@ class NotAuthenticated(ErrorGDP):
 
     def __init__(self, details: str | None = None) -> None:
         super().__init__(details, headers={"WWW-Authenticate": "Bearer"})
+
+class AuthProviderUnavailable(ErrorGDP):
+    status = 503
+    title = "Proveedor de autenticación no disponible"
+    defaultDetails = "No fue posible comunicarse con Roble. Intente de nuevo en unos instantes."
+
+class AccessDenied(ErrorGDP):
+    status = 403
+    title = "Acceso denegado"
+    defaultDetails = "Esta operación requiere el rol admin en Roble."
+
+class DuplicatedUser(ErrorGDP):
+    status = 409
+    title = "Usuario existente"
+    defaultDetails = "Ya existe una cuenta con ese correo en Roble."
+
+class UserRegistrationRejected(ErrorGDP):
+    status = 400
+    title = "No se pudo crear el usuario"
+    defaultDetails = "Roble rechazó el registro. Verifique el correo y los requisitos de contraseña."
 
 class ValidationError(ErrorGDP):
     status = 422
@@ -112,7 +133,7 @@ class PhotoFormatNotAllowed(ErrorGDP):
     def __init__(self, message: str) -> None:
         super().__init__(message, errors={"photo": message})
 
-def ErrorFromPhoto(error: PhotoError) -> ErrorGDP:
+def errorFromPhoto(error: PhotoError) -> ErrorGDP:
     if error.status == PhotoOversized.status:
         return PhotoOversized(error.message)
     if error.status == PhotoFormatNotAllowed.status:
@@ -146,7 +167,11 @@ def requestErrors(exc: Any) -> dict[str, str]:
         if loc and loc[0] in _FASTAPI_ORIGINS:
             loc = loc[1:]
         field = loc[-1] if loc else "body"
-        errors.setdefault(field, _PYDANTIC_MESSAGES.get(e.get("type", ""), "Valor no válido"))
+        if field == "password" and e.get("type") in {"value_error", "string_too_short"}:
+            message = "Use al menos 8 caracteres, una mayúscula, una minúscula, un número y un símbolo de ! @ # $ _ - ."
+        else:
+            message = _PYDANTIC_MESSAGES.get(e.get("type", ""), "Valor no válido")
+        errors.setdefault(field, message)
     return errors
 
 def registerHandlers(
@@ -188,7 +213,7 @@ def registerHandlers(
         body = {
             "status": exc.status_code,
             "title": _HTTP_TITLES.get(exc.status_code, "Error"),
-            "detail": _HTTP_TITLES.get(exc.status_code, "Error")
+            "details": _HTTP_TITLES.get(exc.status_code, "Error")
         }
         return JSONResponse(body, status_code=exc.status_code, headers=getattr(exc, "headers", None))
 
