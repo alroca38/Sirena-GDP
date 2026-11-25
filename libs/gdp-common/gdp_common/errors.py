@@ -14,7 +14,7 @@ log = logging.getLogger("gdp.errors")
 
 __all__ = [
     "ErrorGDP", "InternalError", "ValidationError", "NotAuthenticated",
-    "AuthProviderUnavailable",
+    "AuthProviderUnavailable", "AccessDenied", "DuplicatedUser", "UserRegistrationRejected",
     "PersonNotFound", "DuplicatedDocument", "PhotoOversized",
     "PhotoFormatNotAllowed", "errorFromPhoto", "registerHandlers"
 ]
@@ -72,6 +72,21 @@ class AuthProviderUnavailable(ErrorGDP):
     status = 503
     title = "Proveedor de autenticación no disponible"
     defaultDetails = "No fue posible comunicarse con Roble. Intente de nuevo en unos instantes."
+
+class AccessDenied(ErrorGDP):
+    status = 403
+    title = "Acceso denegado"
+    defaultDetails = "Esta operación requiere el rol admin en Roble."
+
+class DuplicatedUser(ErrorGDP):
+    status = 409
+    title = "Usuario existente"
+    defaultDetails = "Ya existe una cuenta con ese correo en Roble."
+
+class UserRegistrationRejected(ErrorGDP):
+    status = 400
+    title = "No se pudo crear el usuario"
+    defaultDetails = "Roble rechazó el registro. Verifique el correo y los requisitos de contraseña."
 
 class ValidationError(ErrorGDP):
     status = 422
@@ -152,7 +167,11 @@ def requestErrors(exc: Any) -> dict[str, str]:
         if loc and loc[0] in _FASTAPI_ORIGINS:
             loc = loc[1:]
         field = loc[-1] if loc else "body"
-        errors.setdefault(field, _PYDANTIC_MESSAGES.get(e.get("type", ""), "Valor no válido"))
+        if field == "password" and e.get("type") in {"value_error", "string_too_short"}:
+            message = "Use al menos 8 caracteres, una mayúscula, una minúscula, un número y un símbolo de ! @ # $ _ - ."
+        else:
+            message = _PYDANTIC_MESSAGES.get(e.get("type", ""), "Valor no válido")
+        errors.setdefault(field, message)
     return errors
 
 def registerHandlers(

@@ -19,7 +19,7 @@ from fastapi import Request
 
 from gdp_common import roble
 from gdp_common.config import getSettings
-from gdp_common.errors import NotAuthenticated
+from gdp_common.errors import AccessDenied, NotAuthenticated
 
 log = logging.getLogger("gdp.auth")
 
@@ -101,7 +101,6 @@ def verifyToken(token: str) -> dict[str, Any]:
         return cached
 
     profile = roble.me(token)
-
     ttl = getSettings().authCacheTtlSeconds
     if exp is not None:
         ttl = min(ttl, exp - time.time())
@@ -124,6 +123,16 @@ def getCurrentUser(request: Request) -> str:
     user = extractUserFromClaims(profile)
     request.state.user = user
     request.state.claims = profile
+    return user
+
+
+def getCurrentAdmin(request: Request) -> str:
+    """Valida la sesión con Roble y exige su rol admin en el servidor."""
+    user = getCurrentUser(request)
+    role = request.state.claims.get("role")
+    roles = role if isinstance(role, list) else [role]
+    if not any(isinstance(value, str) and value.strip().lower() == "admin" for value in roles):
+        raise AccessDenied()
     return user
 
 

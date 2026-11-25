@@ -16,13 +16,20 @@ from functools import lru_cache
 from typing import Any
 
 import httpx
+import jwt
 
 from gdp_common.config import getSettings
-from gdp_common.errors import AuthProviderUnavailable, InternalError, NotAuthenticated
+from gdp_common.errors import (
+    AuthProviderUnavailable,
+    DuplicatedUser,
+    InternalError,
+    NotAuthenticated,
+    UserRegistrationRejected,
+)
 
 log = logging.getLogger("gdp.roble")
 
-__all__ = ["login", "refresh", "me", "logout", "getHttpClient"]
+__all__ = ["login", "refresh", "me", "registerUser", "logout", "getHttpClient"]
 
 
 @lru_cache(maxsize=1)
@@ -97,7 +104,33 @@ def me(accessToken: str) -> dict[str, Any]:
     if not isinstance(data, dict):
         log.error("Respuesta inesperada de /me: %r", data)
         raise AuthProviderUnavailable()
+    if not data.get("role"):
+        try:
+            tokenClaims = jwt.decode(accessToken, options={"verify_signature": False})
+            role = tokenClaims.get("role") or tokenClaims.get("roles")
+            if role:
+                data["role"] = role
+        except Exception:  # noqa: BLE001
+            pass
     return data
+
+
+def registerUser(email: str, password: str, name: str) -> dict[str, str]:
+    """Crea una cuenta activa en Roble sin iniciar sesión como esa cuenta."""
+    status, data = _call(
+        "POST",
+        "signup-direct",
+        body={"email": email, "password": password, "name": name},
+    )
+    message = ""
+    if isinstance(data, dict):
+        message = " ".join(str(data.get(key, "")) for key in ("detail", "message", "error")).lower()
+    if status == 409 or (status == 400 and any(word in message for word in ("already exists", "already registered", "duplicate", "ya existe", "ya registrado"))):
+        raise DuplicatedUser()
+    if status >= 400:
+        raise UserRegistrationRejected()
+    # No devolver la respuesta íntegra: Roble puede incluir tokens u otros datos.
+    return {"email": email, "name": name}
 
 
 def logout(accessToken: str) -> None:
