@@ -41,6 +41,7 @@ services:
       ROBLE_BASE_URL: ${ROBLE_BASE_URL}
       ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -57,6 +58,7 @@ services:
       ROBLE_BASE_URL: ${ROBLE_BASE_URL}
       ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -73,6 +75,7 @@ services:
       ROBLE_BASE_URL: ${ROBLE_BASE_URL}
       ROBLE_CONTRACT_ID: ${ROBLE_CONTRACT_ID}
       N8N_WEBHOOK_URL: ${N8N_WEBHOOK_URL}
+      N8N_TIMEOUT_SECONDS: ${N8N_TIMEOUT_SECONDS:-5}
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,11 +144,19 @@ services:
 
   n8n:
     image: n8nio/n8n:1.68.0
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /opt/sirena-n8n/entrypoint.sh > /tmp/entrypoint.sh && chmod +x /tmp/entrypoint.sh && exec /tmp/entrypoint.sh"]
     env_file:
       - path: .env
         required: false
     environment:
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:?Define N8N_ENCRYPTION_KEY en .env}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      GENERIC_TIMEZONE: America/Bogota
+      TZ: America/Bogota
       EXECUTIONS_DATA_SAVE_ON_SUCCESS: none
       EXECUTIONS_DATA_SAVE_ON_ERROR: none
       EXECUTIONS_DATA_SAVE_ON_PROGRESS: "false"
@@ -153,6 +164,7 @@ services:
     ports: ["5678:5678"]
     volumes:
       - n8ndata:/home/node/.n8n
+      - ./n8n:/opt/sirena-n8n:ro
     depends_on:
       postgres:
         condition: service_healthy

@@ -3,6 +3,7 @@
 WITH removed AS (
     DELETE FROM vector_person
     WHERE metadata ->> 'documentId' = $1
+       OR metadata ->> 'numero_documento' = $1
     RETURNING 1
 )
 INSERT INTO vector_person (content, embedding, metadata)
